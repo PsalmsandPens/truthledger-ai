@@ -1,18 +1,18 @@
 import os, sqlite3, uuid
 from datetime import datetime
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
 import requests
 from bs4 import BeautifulSoup
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from textblob import TextBlob
 import nltk
+from googlesearch import search  # pip install google
 
 nltk.download('punkt')
 
 # -----------------------------
-# SETUP
+# DATABASE SETUP
 # -----------------------------
 DB = os.path.join(os.getcwd(), "claims.db")
 os.makedirs("data", exist_ok=True)
@@ -51,21 +51,16 @@ def scrape_article(url):
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
         
-        # Extract title
         title_tag = soup.find("title")
         title = title_tag.get_text().strip() if title_tag else "Untitled Article"
         
-        # Extract paragraphs
         paragraphs = soup.find_all('p')
         text = " ".join(p.get_text() for p in paragraphs if len(p.get_text())>20)
         
-        # Extract claims (all meaningful sentences)
         sentences = [s.strip() for s in text.split(".") if len(s.strip())>20]
-        claims = sentences  # <-- Take all sentences as claims
-        
+        claims = sentences
         return title, text, claims
     except Exception as e:
-        st.sidebar.warning(f"Error scraping {url}: {e}")
         return "Untitled Article", "", []
 
 # -----------------------------
@@ -93,13 +88,10 @@ def bias_rating(article_text):
         return "Medium"
     blob = TextBlob(article_text)
     subjectivity = blob.sentiment.subjectivity
-    
-    # Boost based on bias words
     words = article_text.lower().split()
     bias_word_count = sum(word in BIAS_WORDS for word in words)
     bias_ratio = bias_word_count / max(1, len(words))
     adjusted_subjectivity = subjectivity + bias_ratio
-    
     if adjusted_subjectivity < 0.25:
         return "Low"
     elif adjusted_subjectivity < 0.5:
@@ -138,7 +130,6 @@ def save_claims(claims):
 # DASHBOARD
 # -----------------------------
 def display_dashboard():
-    st.set_page_config(page_title="TruthLedger AI", layout="wide")
     st.markdown("""
     <style>
     body {background-color:#0a0a0a; color:#fff; font-family: 'Segoe UI', sans-serif;}
@@ -155,8 +146,7 @@ def display_dashboard():
     </style>
     """, unsafe_allow_html=True)
 
-    st.title("🛰️ TruthLedger AI — Futuristic News Analyzer")
-    st_autorefresh(interval=60000, key="refresh")
+    st.title("🛰️ TruthLedger AI — Global News Analyzer")
 
     conn = sqlite3.connect(DB)
     c = conn.cursor()
@@ -168,7 +158,7 @@ def display_dashboard():
     conn.close()
 
     if not rows:
-        st.info("No claims found yet. Click 'Scrape & Analyze' to add news claims.")
+        st.info("No claims found yet. Scrape a topic to start.")
         return
 
     for r in rows:
@@ -185,32 +175,38 @@ def display_dashboard():
                 <p><b>Bias Rating:</b> <span class='{bias_str.lower()}'>{bias_str}</span></p>
                 <p><small>{timestamp}</small></p>
             </div>
-            """,
-            unsafe_allow_html=True
+            """, unsafe_allow_html=True
         )
+
+# -----------------------------
+# GLOBAL NEWS SEARCH
+# -----------------------------
+def search_global_news(query, max_results=5):
+    urls = []
+    try:
+        for url in search(query, num_results=max_results):
+            if "http" in url:
+                urls.append(url)
+    except Exception as e:
+        st.sidebar.warning(f"Error during global search: {e}")
+    return urls
 
 # -----------------------------
 # MAIN
 # -----------------------------
 init_db()
-
 st.sidebar.title("🛠️ Control Panel")
-st.sidebar.write("Automated zero-cost AI news analyzer")
+st.sidebar.write("Enter a topic to scrape multiple global news sources automatically:")
 
-default_urls = [
-    "https://www.bbc.com/news/world-us-canada-67175669",
-    "https://www.cnn.com/2025/09/22/technology/news-ai-update",
-    "https://www.nytimes.com/2025/09/22/business/tech-startup-news.html"
-]
-urls_input = st.sidebar.text_area(
-    "Enter news URLs (one per line)",
-    value="\n".join(default_urls)
-)
+topic = st.sidebar.text_input("Topic/Keyword", "Artificial Intelligence")
+max_articles = st.sidebar.slider("Max Articles to Scrape", 3, 20, 5)
 
 st.sidebar.subheader("Debug Logs")
 
-if st.sidebar.button("Scrape & Analyze"):
-    urls = [u.strip() for u in urls_input.split("\n") if u.strip()]
+if st.sidebar.button("Scrape & Analyze Topic"):
+    st.sidebar.info(f"Searching global news for '{topic}'...")
+    urls = search_global_news(topic, max_results=max_articles)
+    st.sidebar.write(f"Found {len(urls)} URLs")
     all_claims = []
     for url in urls:
         title, article_text, claims = scrape_article(url)
@@ -239,6 +235,6 @@ if st.sidebar.button("Scrape & Analyze"):
         save_claims(all_claims)
         st.sidebar.success(f"Analyzed {len(all_claims)} claims!")
     else:
-        st.sidebar.warning("No claims were found for the provided URLs.")
+        st.sidebar.warning("No claims were found for this topic.")
 
 display_dashboard()
