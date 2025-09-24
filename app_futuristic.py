@@ -6,6 +6,10 @@ from bs4 import BeautifulSoup
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from textblob import TextBlob
+import nltk
+
+# Download punkt for TextBlob
+nltk.download('punkt')
 
 # -----------------------------
 # SETUP
@@ -40,8 +44,7 @@ def scrape_article(url):
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
         text = soup.get_text(separator=". ")
-        sentences = [s.strip() for s in text.split(".") if len(s.strip())>15]  # filter short lines
-        # Simple claim detection
+        sentences = [s.strip() for s in text.split(".") if len(s.strip())>15]
         claims = [s for s in sentences if any(k in s.lower() for k in ["will","plan","promise","said","report"])]
         return text, claims
     except:
@@ -69,7 +72,7 @@ def truth_score(claim, related_texts):
 # -----------------------------
 def bias_rating(article_text):
     blob = TextBlob(article_text)
-    subjectivity = blob.sentiment.subjectivity  # 0=objective, 1=subjective
+    subjectivity = blob.sentiment.subjectivity
     if subjectivity < 0.3:
         return "Low"
     elif subjectivity < 0.6:
@@ -114,10 +117,25 @@ def display_dashboard():
     """, unsafe_allow_html=True)
 
     st.title("🛰️ TruthLedger AI — Futuristic News Analyzer")
-    st_autorefresh(interval=60000, key="refresh")  # auto-refresh every 60s
+    st_autorefresh(interval=60000, key="refresh")
 
+    # Ensure DB table exists
     conn = sqlite3.connect(DB)
     c = conn.cursor()
+    c.execute('''
+      CREATE TABLE IF NOT EXISTS claims (
+          id TEXT PRIMARY KEY,
+          person TEXT,
+          claim TEXT,
+          source TEXT,
+          url TEXT,
+          truth_score TEXT,
+          bias_rating TEXT,
+          timestamp TEXT
+      )
+    ''')
+    conn.commit()
+
     c.execute("SELECT person, claim, source, truth_score, bias_rating, timestamp FROM claims ORDER BY timestamp DESC")
     rows = c.fetchall()
     conn.close()
@@ -165,8 +183,7 @@ if st.sidebar.button("Scrape & Analyze"):
         if not article_text:
             continue
         bias = bias_rating(article_text)
-
-        # Simple global comparison: reuse all URLs except current for comparison
+        # Global comparison: reuse all other URLs for comparison
         related_texts = []
         for compare_url in urls:
             if compare_url == url:
@@ -174,7 +191,6 @@ if st.sidebar.button("Scrape & Analyze"):
             text,_ = scrape_article(compare_url)
             if text:
                 related_texts.append(text)
-
         for claim in claims:
             all_claims.append({
                 "person": "Unknown",
