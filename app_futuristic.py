@@ -41,4 +41,13 @@ def scrape_news(url_list):
             for line in text.split("."):
                 line = line.strip()
                 if any(word in line.lower() for word in ["will", "plan", "promise"]):
-                    claims_extracted.append({
+                    claim_dict = {
+                        "person": "Unknown",
+                        "claim": line,
+                        "source": url,
+                        "url": url
+                    }
+                    claims_extracted.append(claim_dict)
+        except:
+            continue
+    return claims_extracted
