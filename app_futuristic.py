@@ -14,13 +14,14 @@ nltk.download('punkt')
 # -----------------------------
 # SETUP
 # -----------------------------
-# Use absolute path for database to avoid file-not-found errors
+# Absolute path for database to avoid file-not-found issues
 DB = os.path.join(os.getcwd(), "claims.db")
 os.makedirs("data", exist_ok=True)
 
 def init_db():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
+    # Always ensure table exists
     c.execute('''
       CREATE TABLE IF NOT EXISTS claims (
           id TEXT PRIMARY KEY,
@@ -120,9 +121,9 @@ def display_dashboard():
     st.title("🛰️ TruthLedger AI — Futuristic News Analyzer")
     st_autorefresh(interval=60000, key="refresh")
 
-    # Ensure DB table exists
     conn = sqlite3.connect(DB)
     c = conn.cursor()
+    # Ensure table exists
     c.execute('''
       CREATE TABLE IF NOT EXISTS claims (
           id TEXT PRIMARY KEY,
@@ -137,9 +138,17 @@ def display_dashboard():
     ''')
     conn.commit()
 
-    c.execute("SELECT person, claim, source, truth_score, bias_rating, timestamp FROM claims ORDER BY timestamp DESC")
-    rows = c.fetchall()
+    try:
+        c.execute("SELECT person, claim, source, truth_score, bias_rating, timestamp FROM claims ORDER BY timestamp DESC")
+        rows = c.fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+
     conn.close()
+
+    if not rows:
+        st.info("No claims found yet. Click 'Scrape & Analyze' to add news claims.")
+        return
 
     for r in rows:
         person, claim, source, score, bias, timestamp = r
