@@ -2,7 +2,8 @@ import os, sqlite3, uuid
 from datetime import datetime
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
-from newspaper import Article
+import requests
+from bs4 import BeautifulSoup
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from textblob import TextBlob
@@ -19,11 +20,8 @@ os.makedirs("data", exist_ok=True)
 def init_db():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='claims'")
-    table_exists = c.fetchone()
-
-    if not table_exists:
+    if not c.fetchone():
         c.execute('''
           CREATE TABLE claims (
               id TEXT PRIMARY KEY,
@@ -36,14 +34,6 @@ def init_db():
               timestamp TEXT
           )
         ''')
-    else:
-        c.execute("PRAGMA table_info(claims)")
-        existing_columns = [col[1] for col in c.fetchall()]
-        required_columns = ["id","person","claim","source","url","truth_score","bias_rating","timestamp"]
-        for col in required_columns:
-            if col not in existing_columns:
-                c.execute(f"ALTER TABLE claims ADD COLUMN {col} TEXT")
-
     conn.commit()
     conn.close()
 
@@ -52,18 +42,19 @@ def init_db():
 # -----------------------------
 def scrape_article(url):
     try:
-        a = Article(url)
-        a.download()
-        a.parse()
-        text = a.text
-        sentences = [s.strip() for s in text.split(".") if len(s.strip()) > 15]
+        r = requests.get(url, timeout=5)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+        paragraphs = soup.find_all('p')
+        text = " ".join(p.get_text() for p in paragraphs if len(p.get_text())>15)
+        sentences = [s.strip() for s in text.split(".") if len(s.strip())>15]
         claims = [s for s in sentences if any(k in s.lower() for k in ["will","plan","promise","said","report"])]
         return text, claims
     except:
         return "", []
 
 # -----------------------------
-# GLOBAL CLAIM COMPARISON
+# TRUTH SCORE
 # -----------------------------
 def truth_score(claim, related_texts):
     if not related_texts:
@@ -83,8 +74,8 @@ def truth_score(claim, related_texts):
 # BIAS RATING
 # -----------------------------
 def bias_rating(article_text):
-    if not article_text:
-        return "Unknown"
+    if not article_text or len(article_text.strip()) < 50:
+        return "Medium"
     blob = TextBlob(article_text)
     subjectivity = blob.sentiment.subjectivity
     if subjectivity < 0.3:
@@ -95,36 +86,29 @@ def bias_rating(article_text):
         return "High"
 
 # -----------------------------
-# SAVE TO DB
+# SAVE CLAIMS TO DB
 # -----------------------------
 def save_claims(claims):
     if not claims:
         return
-
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-
     for claim in claims:
-        required_keys = ["person", "claim", "source", "url", "truth_score", "bias_rating"]
-        if not isinstance(claim, dict) or not all(k in claim for k in required_keys):
+        if not claim.get("claim") or len(claim.get("claim").strip())==0:
             continue
-        if not claim["claim"].strip():
-            continue
-
         try:
             c.execute('INSERT OR IGNORE INTO claims VALUES (?,?,?,?,?,?,?,?)', (
                 str(uuid.uuid4()),
-                claim["person"],
-                claim["claim"],
-                claim["source"],
-                claim["url"],
-                claim["truth_score"],
-                claim["bias_rating"],
+                claim.get("person", "Unknown Author"),
+                claim["claim"].strip(),
+                claim.get("source", ""),
+                claim.get("url", ""),
+                claim.get("truth_score", "Partial"),
+                claim.get("bias_rating", "Medium"),
                 str(datetime.now())
             ))
         except Exception as e:
             st.warning(f"Skipping claim due to DB error: {e}")
-
     conn.commit()
     conn.close()
 
@@ -157,9 +141,8 @@ def display_dashboard():
     try:
         c.execute("SELECT person, claim, source, truth_score, bias_rating, timestamp FROM claims ORDER BY timestamp DESC")
         rows = c.fetchall()
-    except sqlite3.OperationalError:
+    except:
         rows = []
-
     conn.close()
 
     if not rows:
@@ -168,8 +151,8 @@ def display_dashboard():
 
     for r in rows:
         person, claim, source, score, bias, timestamp = r
-        score_str = str(score) if score else "Unknown"
-        bias_str = str(bias) if bias else "Unknown"
+        score_str = str(score) if score else "Partial"
+        bias_str = str(bias) if bias else "Medium"
         st.markdown(
             f"""
             <div class='card'>
@@ -219,15 +202,14 @@ if st.sidebar.button("Scrape & Analyze"):
                 related_texts.append(text)
         for claim in claims:
             claim_data = {
-                "person": "Unknown",
+                "person": "Unknown Author",
                 "claim": claim.strip(),
                 "source": url,
                 "url": url,
                 "truth_score": truth_score(claim, related_texts),
                 "bias_rating": bias
             }
-            if claim_data["claim"]:
-                all_claims.append(claim_data)
+            all_claims.append(claim_data)
     if all_claims:
         save_claims(all_claims)
         st.sidebar.success(f"Analyzed {len(all_claims)} claims!")
