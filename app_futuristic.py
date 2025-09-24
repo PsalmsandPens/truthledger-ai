@@ -87,6 +87,8 @@ def truth_score(claim, related_texts):
 # BIAS RATING
 # -----------------------------
 def bias_rating(article_text):
+    if not article_text:
+        return "Unknown"
     blob = TextBlob(article_text)
     subjectivity = blob.sentiment.subjectivity
     if subjectivity < 0.3:
@@ -168,23 +170,23 @@ def display_dashboard():
         st.info("No claims found yet. Click 'Scrape & Analyze' to add news claims.")
         return
 
-  for r in rows:
-    person, claim, source, score, bias, timestamp = r
-    score_str = str(score) if score else "Unknown"
-    bias_str = str(bias) if bias else "Unknown"
-    st.markdown(
-        f"""
-        <div class='card'>
-            <h3>{person}</h3>
-            <p>{claim}</p>
-            <p><b>Source:</b> <a href='{source}' target='_blank'>{source}</a></p>
-            <p><b>Truth Score:</b> <span class='{score_str.lower()}'>{score_str}</span></p>
-            <p><b>Bias Rating:</b> <span class='{bias_str.lower()}'>{bias_str}</span></p>
-            <p><small>{timestamp}</small></p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    for r in rows:
+        person, claim, source, score, bias, timestamp = r
+        score_str = str(score) if score else "Unknown"
+        bias_str = str(bias) if bias else "Unknown"
+        st.markdown(
+            f"""
+            <div class='card'>
+                <h3>{person}</h3>
+                <p>{claim}</p>
+                <p><b>Source:</b> <a href='{source}' target='_blank'>{source}</a></p>
+                <p><b>Truth Score:</b> <span class='{score_str.lower()}'>{score_str}</span></p>
+                <p><b>Bias Rating:</b> <span class='{bias_str.lower()}'>{bias_str}</span></p>
+                <p><small>{timestamp}</small></p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
 # -----------------------------
 # MAIN
