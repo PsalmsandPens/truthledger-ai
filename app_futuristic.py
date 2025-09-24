@@ -81,17 +81,36 @@ def bias_rating(article_text):
         return "High"
 
 # -----------------------------
-# SAVE TO DB
+# SAVE TO DB (BULLETPROOF)
 # -----------------------------
 def save_claims(claims):
+    if not claims:
+        return  # Nothing to save
+
     conn = sqlite3.connect(DB)
     c = conn.cursor()
+
     for claim in claims:
-        c.execute('INSERT OR IGNORE INTO claims VALUES (?,?,?,?,?,?,?,?)', (
-            str(uuid.uuid4()), claim["person"], claim["claim"],
-            claim["source"], claim["url"], claim["truth_score"],
-            claim["bias_rating"], str(datetime.now())
-        ))
+        required_keys = ["person", "claim", "source", "url", "truth_score", "bias_rating"]
+        if not isinstance(claim, dict) or not all(k in claim for k in required_keys):
+            continue  # skip malformed claim
+        if not claim["claim"].strip():
+            continue  # skip empty claim
+
+        try:
+            c.execute('INSERT OR IGNORE INTO claims VALUES (?,?,?,?,?,?,?,?)', (
+                str(uuid.uuid4()),
+                claim["person"],
+                claim["claim"],
+                claim["source"],
+                claim["url"],
+                claim["truth_score"],
+                claim["bias_rating"],
+                str(datetime.now())
+            ))
+        except Exception as e:
+            st.warning(f"Skipping claim due to DB error: {e}")
+
     conn.commit()
     conn.close()
 
@@ -172,7 +191,6 @@ init_db()
 st.sidebar.title("🛠️ Control Panel")
 st.sidebar.write("Automated zero-cost AI news analyzer")
 
-# Preloaded global news URLs
 default_urls = [
     "https://www.bbc.com/news/world-us-canada-67175669",
     "https://www.cnn.com/2025/09/22/technology/news-ai-update",
@@ -191,7 +209,6 @@ if st.sidebar.button("Scrape & Analyze"):
         if not article_text or not claims:
             continue
         bias = bias_rating(article_text)
-        # Global comparison: reuse all other URLs for comparison
         related_texts = []
         for compare_url in urls:
             if compare_url == url:
