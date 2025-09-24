@@ -14,14 +14,12 @@ nltk.download('punkt')
 # -----------------------------
 # SETUP
 # -----------------------------
-# Absolute path for database to avoid file-not-found issues
 DB = os.path.join(os.getcwd(), "claims.db")
 os.makedirs("data", exist_ok=True)
 
 def init_db():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    # Always ensure table exists
     c.execute('''
       CREATE TABLE IF NOT EXISTS claims (
           id TEXT PRIMARY KEY,
@@ -190,7 +188,7 @@ if st.sidebar.button("Scrape & Analyze"):
     all_claims = []
     for url in urls:
         article_text, claims = scrape_article(url)
-        if not article_text:
+        if not article_text or not claims:
             continue
         bias = bias_rating(article_text)
         # Global comparison: reuse all other URLs for comparison
@@ -202,15 +200,20 @@ if st.sidebar.button("Scrape & Analyze"):
             if text:
                 related_texts.append(text)
         for claim in claims:
-            all_claims.append({
+            claim_data = {
                 "person": "Unknown",
-                "claim": claim,
+                "claim": claim.strip(),
                 "source": url,
                 "url": url,
                 "truth_score": truth_score(claim, related_texts),
                 "bias_rating": bias
-            })
-    save_claims(all_claims)
-    st.sidebar.success(f"Analyzed {len(all_claims)} claims!")
+            }
+            if claim_data["claim"]:  # Only append non-empty claims
+                all_claims.append(claim_data)
+    if all_claims:
+        save_claims(all_claims)
+        st.sidebar.success(f"Analyzed {len(all_claims)} claims!")
+    else:
+        st.sidebar.warning("No claims were found for the provided URLs.")
 
 display_dashboard()
