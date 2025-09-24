@@ -156,21 +156,6 @@ def display_dashboard():
 
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    # Ensure table exists
-    c.execute('''
-      CREATE TABLE IF NOT EXISTS claims (
-          id TEXT PRIMARY KEY,
-          person TEXT,
-          claim TEXT,
-          source TEXT,
-          url TEXT,
-          truth_score TEXT,
-          bias_rating TEXT,
-          timestamp TEXT
-      )
-    ''')
-    conn.commit()
-
     try:
         c.execute("SELECT person, claim, source, truth_score, bias_rating, timestamp FROM claims ORDER BY timestamp DESC")
         rows = c.fetchall()
@@ -241,7 +226,7 @@ if st.sidebar.button("Scrape & Analyze"):
                 "truth_score": truth_score(claim, related_texts),
                 "bias_rating": bias
             }
-            if claim_data["claim"]:  # Only append non-empty claims
+            if claim_data["claim"]:
                 all_claims.append(claim_data)
     if all_claims:
         save_claims(all_claims)
