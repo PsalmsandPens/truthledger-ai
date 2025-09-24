@@ -40,18 +40,32 @@ def init_db():
 # -----------------------------
 # SCRAPING & CLAIM EXTRACTION
 # -----------------------------
+BIAS_WORDS = [
+    "outrageous", "shocking", "exclusive", "allegedly", "claims",
+    "horrific", "devastating", "incredible", "disaster", "miracle"
+]
+
 def scrape_article(url):
     try:
         r = requests.get(url, timeout=5)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
+        
+        # Extract title
+        title_tag = soup.find("title")
+        title = title_tag.get_text().strip() if title_tag else "Untitled Article"
+        
+        # Extract paragraphs
         paragraphs = soup.find_all('p')
         text = " ".join(p.get_text() for p in paragraphs if len(p.get_text())>15)
+        
+        # Extract claims
         sentences = [s.strip() for s in text.split(".") if len(s.strip())>15]
         claims = [s for s in sentences if any(k in s.lower() for k in ["will","plan","promise","said","report"])]
-        return text, claims
+        
+        return title, text, claims
     except:
-        return "", []
+        return "Untitled Article", "", []
 
 # -----------------------------
 # TRUTH SCORE
@@ -78,9 +92,16 @@ def bias_rating(article_text):
         return "Medium"
     blob = TextBlob(article_text)
     subjectivity = blob.sentiment.subjectivity
-    if subjectivity < 0.3:
+    
+    # Boost based on bias words
+    words = article_text.lower().split()
+    bias_word_count = sum(word in BIAS_WORDS for word in words)
+    bias_ratio = bias_word_count / max(1, len(words))
+    adjusted_subjectivity = subjectivity + bias_ratio
+    
+    if adjusted_subjectivity < 0.25:
         return "Low"
-    elif subjectivity < 0.6:
+    elif adjusted_subjectivity < 0.5:
         return "Medium"
     else:
         return "High"
@@ -99,7 +120,7 @@ def save_claims(claims):
         try:
             c.execute('INSERT OR IGNORE INTO claims VALUES (?,?,?,?,?,?,?,?)', (
                 str(uuid.uuid4()),
-                claim.get("person", "Unknown Author"),
+                claim.get("person", "Untitled Article"),
                 claim["claim"].strip(),
                 claim.get("source", ""),
                 claim.get("url", ""),
@@ -189,7 +210,7 @@ if st.sidebar.button("Scrape & Analyze"):
     urls = [u.strip() for u in urls_input.split("\n") if u.strip()]
     all_claims = []
     for url in urls:
-        article_text, claims = scrape_article(url)
+        title, article_text, claims = scrape_article(url)
         if not article_text or not claims:
             continue
         bias = bias_rating(article_text)
@@ -197,12 +218,12 @@ if st.sidebar.button("Scrape & Analyze"):
         for compare_url in urls:
             if compare_url == url:
                 continue
-            text,_ = scrape_article(compare_url)
+            _, text,_ = scrape_article(compare_url)
             if text:
                 related_texts.append(text)
         for claim in claims:
             claim_data = {
-                "person": "Unknown Author",
+                "person": title,
                 "claim": claim.strip(),
                 "source": url,
                 "url": url,
