@@ -1,8 +1,8 @@
-import os, sqlite3, uuid, requests, time
-from newspaper import Article
+import os, sqlite3, uuid, requests
 from datetime import datetime
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
+from bs4 import BeautifulSoup
 
 # -----------------------------
 # SETUP
@@ -34,11 +34,10 @@ def scrape_news(url_list):
     claims_extracted = []
     for url in url_list:
         try:
-            article = Article(url)
-            article.download()
-            article.parse()
-            text = article.text
-            # Simple AI-free claim extraction for MVP
+            r = requests.get(url, timeout=5)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            text = soup.get_text(separator=". ")
             for line in text.split("."):
                 line = line.strip()
                 if any(word in line.lower() for word in ["will", "plan", "promise"]):
@@ -112,26 +111,3 @@ def display_dashboard():
         st.markdown(f"""
         <div class='card'>
         <h3>{person}</h3>
-        <p>{claim}</p>
-        <p><b>Source:</b> <a href='{source}' target='_blank'>{source}</a></p>
-        <p><b>Truth Score:</b> <span class='{score_class}'>{score}</span></p>
-        <p><small>{timestamp}</small></p>
-        </div>
-        """, unsafe_allow_html=True)
-
-# -----------------------------
-# MAIN
-# -----------------------------
-init_db()
-
-st.sidebar.title("🛠️ Control Panel")
-st.sidebar.write("Automated zero-cost AI news receipts site")
-urls_input = st.sidebar.text_area("Enter news URLs (one per line)")
-
-if st.sidebar.button("Scrape & Update Claims"):
-    urls = [u.strip() for u in urls_input.split("\n") if u.strip()]
-    new_claims = scrape_news(urls)
-    save_claims(new_claims)
-    st.sidebar.success(f"Added {len(new_claims)} new claims!")
-
-display_dashboard()
