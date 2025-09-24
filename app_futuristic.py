@@ -14,7 +14,8 @@ nltk.download('punkt')
 # -----------------------------
 # SETUP
 # -----------------------------
-DB = "claims.db"
+# Use absolute path for database to avoid file-not-found errors
+DB = os.path.join(os.getcwd(), "claims.db")
 os.makedirs("data", exist_ok=True)
 
 def init_db():
