@@ -124,26 +124,9 @@ def save_claims(claims):
     conn.close()
 
 # -----------------------------
-# DASHBOARD
+# DASHBOARD RENDERING
 # -----------------------------
-def display_dashboard():
-    st.markdown("""
-    <style>
-    body {background-color:#0a0a0a; color:#fff; font-family: 'Segoe UI', sans-serif;}
-    .card {border:2px solid #0ff; border-radius:15px; padding:15px; margin:10px; background-color:#111;
-           transition: transform 0.2s; box-shadow: 0 0 15px #0ff;}
-    .card:hover {transform: scale(1.02); box-shadow: 0 0 25px #0ff;}
-    .true {color:#0f0; font-weight:bold;}
-    .partial {color:#ff0; font-weight:bold;}
-    .false {color:#f00; font-weight:bold;}
-    .low {color:#0f0;}
-    .medium {color:#ff0;}
-    .high {color:#f00;}
-    a {color:#0ff;}
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.title("🛰️ TruthLedger AI — Global News Analyzer")
+def render_dashboard(container):
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     try:
@@ -153,29 +136,30 @@ def display_dashboard():
         rows = []
     conn.close()
 
-    if not rows:
-        st.info("No claims found yet. Scrape a topic to start.")
-        return
-
-    for r in rows:
-        title, claim, source, truth, bias, timestamp = r
-        score_str = str(truth) if truth else "Partial"
-        bias_str = str(bias) if bias else "Medium"
-        st.markdown(
-            f"""
-            <div class='card'>
-                <h3>{title}</h3>
-                <p>{claim}</p>
-                <p><b>Source:</b> <a href='{source}' target='_blank'>{source}</a></p>
-                <p><b>Truth Score:</b> <span class='{score_str.lower()}'>{score_str}</span></p>
-                <p><b>Bias Rating:</b> <span class='{bias_str.lower()}'>{bias_str}</span></p>
-                <p><small>{timestamp}</small></p>
-            </div>
-            """, unsafe_allow_html=True
-        )
+    with container:
+        container.empty()  # Clear before re-rendering
+        if not rows:
+            st.info("No claims found yet. Scrape a topic to start.")
+            return
+        for r in rows:
+            title, claim, source, truth, bias, timestamp = r
+            score_str = str(truth) if truth else "Partial"
+            bias_str = str(bias) if bias else "Medium"
+            st.markdown(
+                f"""
+                <div class='card'>
+                    <h3>{title}</h3>
+                    <p>{claim}</p>
+                    <p><b>Source:</b> <a href='{source}' target='_blank'>{source}</a></p>
+                    <p><b>Truth Score:</b> <span class='{score_str.lower()}'>{score_str}</span></p>
+                    <p><b>Bias Rating:</b> <span class='{bias_str.lower()}'>{bias_str}</span></p>
+                    <p><small>{timestamp}</small></p>
+                </div>
+                """, unsafe_allow_html=True
+            )
 
 # -----------------------------
-# GLOBAL NEWS SCRAPER (NO googlesearch)
+# GOOGLE NEWS SCRAPER (NO googlesearch)
 # -----------------------------
 def search_google_news(query, max_results=5):
     try:
@@ -202,12 +186,29 @@ def search_google_news(query, max_results=5):
 # MAIN
 # -----------------------------
 init_db()
+st.markdown("""
+<style>
+body {background-color:#0a0a0a; color:#fff; font-family: 'Segoe UI', sans-serif;}
+.card {border:2px solid #0ff; border-radius:15px; padding:15px; margin:10px; background-color:#111;
+       transition: transform 0.2s; box-shadow: 0 0 15px #0ff;}
+.card:hover {transform: scale(1.02); box-shadow: 0 0 25px #0ff;}
+.true {color:#0f0; font-weight:bold;}
+.partial {color:#ff0; font-weight:bold;}
+.false {color:#f00; font-weight:bold;}
+.low {color:#0f0;}
+.medium {color:#ff0;}
+.high {color:#f00;}
+a {color:#0ff;}
+</style>
+""", unsafe_allow_html=True)
+
+main_container = st.container()
+
 st.sidebar.title("🛠️ Control Panel")
 st.sidebar.write("Enter a topic to scrape multiple global news sources automatically:")
 
 topic = st.sidebar.text_input("Topic/Keyword", "Artificial Intelligence")
 max_articles = st.sidebar.slider("Max Articles to Scrape", 3, 20, 5)
-
 st.sidebar.subheader("Debug Logs")
 
 if st.sidebar.button("Scrape & Analyze Topic"):
@@ -215,9 +216,10 @@ if st.sidebar.button("Scrape & Analyze Topic"):
     urls = search_google_news(topic, max_results=max_articles)
     st.sidebar.write(f"Found {len(urls)} URLs")
     all_claims = []
-    for url in urls:
+
+    for idx, url in enumerate(urls):
         title, article_text, claims = scrape_article(url)
-        st.sidebar.write(f"Scraping: {url} | Title: {title} | Claims Found: {len(claims)}")
+        st.sidebar.write(f"[{idx+1}/{len(urls)}] Scraping: {url} | Title: {title} | Claims Found: {len(claims)}")
         if not article_text or not claims:
             continue
         bias = bias_rating(article_text)
@@ -238,10 +240,5 @@ if st.sidebar.button("Scrape & Analyze Topic"):
                 "bias_rating": bias
             }
             all_claims.append(claim_data)
-    if all_claims:
         save_claims(all_claims)
-        st.sidebar.success(f"Analyzed {len(all_claims)} claims!")
-    else:
-        st.sidebar.warning("No claims were found for this topic.")
-
-display_dashboard()
+        render_dashboard(main_container)  # Incrementally update main page
