@@ -1,7 +1,7 @@
 streamlit
 streamlit-autorefresh
+newspaper3k
 requests
-beautifulsoup4
 textblob
 scikit-learn
 nltk
