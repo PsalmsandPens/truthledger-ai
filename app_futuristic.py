@@ -25,7 +25,7 @@ def init_db():
         c.execute('''
           CREATE TABLE claims (
               id TEXT PRIMARY KEY,
-              person TEXT,
+              title TEXT,
               claim TEXT,
               source TEXT,
               url TEXT,
@@ -120,12 +120,12 @@ def save_claims(claims):
         try:
             c.execute('INSERT OR IGNORE INTO claims VALUES (?,?,?,?,?,?,?,?)', (
                 str(uuid.uuid4()),
-                claim.get("person", "Untitled Article"),
+                claim.get("title", "Untitled Article"),   # Title stored here
                 claim["claim"].strip(),
-                claim.get("source", ""),
-                claim.get("url", ""),
-                claim.get("truth_score", "Partial"),
-                claim.get("bias_rating", "Medium"),
+                claim.get("source",""),
+                claim.get("url",""),
+                claim.get("truth_score","Partial"),
+                claim.get("bias_rating","Medium"),       # Bias rating stored correctly
                 str(datetime.now())
             ))
         except Exception as e:
@@ -160,7 +160,7 @@ def display_dashboard():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     try:
-        c.execute("SELECT person, claim, source, truth_score, bias_rating, timestamp FROM claims ORDER BY timestamp DESC")
+        c.execute("SELECT title, claim, source, truth_score, bias_rating, timestamp FROM claims ORDER BY timestamp DESC")
         rows = c.fetchall()
     except:
         rows = []
@@ -171,13 +171,13 @@ def display_dashboard():
         return
 
     for r in rows:
-        person, claim, source, score, bias, timestamp = r
-        score_str = str(score) if score else "Partial"
+        title, claim, source, truth, bias, timestamp = r
+        score_str = str(truth) if truth else "Partial"
         bias_str = str(bias) if bias else "Medium"
         st.markdown(
             f"""
             <div class='card'>
-                <h3>{person}</h3>
+                <h3>{title}</h3>
                 <p>{claim}</p>
                 <p><b>Source:</b> <a href='{source}' target='_blank'>{source}</a></p>
                 <p><b>Truth Score:</b> <span class='{score_str.lower()}'>{score_str}</span></p>
@@ -223,12 +223,12 @@ if st.sidebar.button("Scrape & Analyze"):
                 related_texts.append(text)
         for claim in claims:
             claim_data = {
-                "person": title,
+                "title": title,          # Title now stored correctly
                 "claim": claim.strip(),
                 "source": url,
                 "url": url,
                 "truth_score": truth_score(claim, related_texts),
-                "bias_rating": bias
+                "bias_rating": bias       # Bias rating stored correctly
             }
             all_claims.append(claim_data)
     if all_claims:
