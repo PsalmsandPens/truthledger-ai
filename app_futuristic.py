@@ -57,14 +57,15 @@ def scrape_article(url):
         
         # Extract paragraphs
         paragraphs = soup.find_all('p')
-        text = " ".join(p.get_text() for p in paragraphs if len(p.get_text())>15)
+        text = " ".join(p.get_text() for p in paragraphs if len(p.get_text())>20)
         
-        # Extract claims
-        sentences = [s.strip() for s in text.split(".") if len(s.strip())>15]
-        claims = [s for s in sentences if any(k in s.lower() for k in ["will","plan","promise","said","report"])]
+        # Extract claims (all meaningful sentences)
+        sentences = [s.strip() for s in text.split(".") if len(s.strip())>20]
+        claims = sentences  # <-- Take all sentences as claims
         
         return title, text, claims
-    except:
+    except Exception as e:
+        st.sidebar.warning(f"Error scraping {url}: {e}")
         return "Untitled Article", "", []
 
 # -----------------------------
@@ -120,12 +121,12 @@ def save_claims(claims):
         try:
             c.execute('INSERT OR IGNORE INTO claims VALUES (?,?,?,?,?,?,?,?)', (
                 str(uuid.uuid4()),
-                claim.get("title", "Untitled Article"),   # Title stored here
+                claim.get("title", "Untitled Article"),
                 claim["claim"].strip(),
                 claim.get("source",""),
                 claim.get("url",""),
                 claim.get("truth_score","Partial"),
-                claim.get("bias_rating","Medium"),       # Bias rating stored correctly
+                claim.get("bias_rating","Medium"),
                 str(datetime.now())
             ))
         except Exception as e:
@@ -206,11 +207,14 @@ urls_input = st.sidebar.text_area(
     value="\n".join(default_urls)
 )
 
+st.sidebar.subheader("Debug Logs")
+
 if st.sidebar.button("Scrape & Analyze"):
     urls = [u.strip() for u in urls_input.split("\n") if u.strip()]
     all_claims = []
     for url in urls:
         title, article_text, claims = scrape_article(url)
+        st.sidebar.write(f"Scraping: {url} | Title: {title} | Claims Found: {len(claims)}")
         if not article_text or not claims:
             continue
         bias = bias_rating(article_text)
@@ -223,12 +227,12 @@ if st.sidebar.button("Scrape & Analyze"):
                 related_texts.append(text)
         for claim in claims:
             claim_data = {
-                "title": title,          # Title now stored correctly
+                "title": title,
                 "claim": claim.strip(),
                 "source": url,
                 "url": url,
                 "truth_score": truth_score(claim, related_texts),
-                "bias_rating": bias       # Bias rating stored correctly
+                "bias_rating": bias
             }
             all_claims.append(claim_data)
     if all_claims:
