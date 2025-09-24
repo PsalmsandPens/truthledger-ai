@@ -7,7 +7,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from textblob import TextBlob
 import nltk
-from googlesearch import search  # pip install google
+import re
 
 nltk.download('punkt')
 
@@ -50,13 +50,10 @@ def scrape_article(url):
         r = requests.get(url, timeout=5)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
-        
         title_tag = soup.find("title")
         title = title_tag.get_text().strip() if title_tag else "Untitled Article"
-        
         paragraphs = soup.find_all('p')
         text = " ".join(p.get_text() for p in paragraphs if len(p.get_text())>20)
-        
         sentences = [s.strip() for s in text.split(".") if len(s.strip())>20]
         claims = sentences
         return title, text, claims
@@ -147,7 +144,6 @@ def display_dashboard():
     """, unsafe_allow_html=True)
 
     st.title("🛰️ TruthLedger AI — Global News Analyzer")
-
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     try:
@@ -179,17 +175,28 @@ def display_dashboard():
         )
 
 # -----------------------------
-# GLOBAL NEWS SEARCH
+# GLOBAL NEWS SCRAPER (NO googlesearch)
 # -----------------------------
-def search_global_news(query, max_results=5):
-    urls = []
+def search_google_news(query, max_results=5):
     try:
-        for url in search(query, num_results=max_results):
-            if "http" in url:
-                urls.append(url)
+        headers = {"User-Agent":"Mozilla/5.0"}
+        search_url = f"https://www.google.com/search?q={query.replace(' ','+')}&tbm=nws"
+        r = requests.get(search_url, headers=headers, timeout=5)
+        soup = BeautifulSoup(r.text, "html.parser")
+        links = []
+        for a in soup.find_all('a', href=True):
+            href = a['href']
+            match = re.search(r"\/url\?q=(http.*?)&", href)
+            if match:
+                url = match.group(1)
+                if url not in links:
+                    links.append(url)
+            if len(links) >= max_results:
+                break
+        return links
     except Exception as e:
-        st.sidebar.warning(f"Error during global search: {e}")
-    return urls
+        st.sidebar.warning(f"Error scraping Google News: {e}")
+        return []
 
 # -----------------------------
 # MAIN
@@ -204,8 +211,8 @@ max_articles = st.sidebar.slider("Max Articles to Scrape", 3, 20, 5)
 st.sidebar.subheader("Debug Logs")
 
 if st.sidebar.button("Scrape & Analyze Topic"):
-    st.sidebar.info(f"Searching global news for '{topic}'...")
-    urls = search_global_news(topic, max_results=max_articles)
+    st.sidebar.info(f"Searching Google News for '{topic}'...")
+    urls = search_google_news(topic, max_results=max_articles)
     st.sidebar.write(f"Found {len(urls)} URLs")
     all_claims = []
     for url in urls:
