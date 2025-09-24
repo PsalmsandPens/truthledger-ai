@@ -20,18 +20,34 @@ os.makedirs("data", exist_ok=True)
 def init_db():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute('''
-      CREATE TABLE IF NOT EXISTS claims (
-          id TEXT PRIMARY KEY,
-          person TEXT,
-          claim TEXT,
-          source TEXT,
-          url TEXT,
-          truth_score TEXT,
-          bias_rating TEXT,
-          timestamp TEXT
-      )
-    ''')
+
+    # Check if table exists
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='claims'")
+    table_exists = c.fetchone()
+
+    if not table_exists:
+        # Create fresh table
+        c.execute('''
+          CREATE TABLE claims (
+              id TEXT PRIMARY KEY,
+              person TEXT,
+              claim TEXT,
+              source TEXT,
+              url TEXT,
+              truth_score TEXT,
+              bias_rating TEXT,
+              timestamp TEXT
+          )
+        ''')
+    else:
+        # Table exists — check for missing columns
+        c.execute("PRAGMA table_info(claims)")
+        existing_columns = [col[1] for col in c.fetchall()]
+        required_columns = ["id","person","claim","source","url","truth_score","bias_rating","timestamp"]
+        for col in required_columns:
+            if col not in existing_columns:
+                c.execute(f"ALTER TABLE claims ADD COLUMN {col} TEXT")
+
     conn.commit()
     conn.close()
 
