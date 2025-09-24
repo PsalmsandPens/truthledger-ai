@@ -5,3 +5,5 @@ requests
 textblob
 scikit-learn
 nltk
+lxml
+Pillow
