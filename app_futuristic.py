@@ -1,14 +1,13 @@
-import os, sqlite3, uuid, requests
+import os, sqlite3, uuid
 from datetime import datetime
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
-from bs4 import BeautifulSoup
+from newspaper import Article
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from textblob import TextBlob
 import nltk
 
-# Download punkt for TextBlob
 nltk.download('punkt')
 
 # -----------------------------
@@ -21,12 +20,10 @@ def init_db():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
 
-    # Check if table exists
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='claims'")
     table_exists = c.fetchone()
 
     if not table_exists:
-        # Create fresh table
         c.execute('''
           CREATE TABLE claims (
               id TEXT PRIMARY KEY,
@@ -40,7 +37,6 @@ def init_db():
           )
         ''')
     else:
-        # Table exists — check for missing columns
         c.execute("PRAGMA table_info(claims)")
         existing_columns = [col[1] for col in c.fetchall()]
         required_columns = ["id","person","claim","source","url","truth_score","bias_rating","timestamp"]
@@ -56,11 +52,11 @@ def init_db():
 # -----------------------------
 def scrape_article(url):
     try:
-        r = requests.get(url, timeout=5)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
-        text = soup.get_text(separator=". ")
-        sentences = [s.strip() for s in text.split(".") if len(s.strip())>15]
+        a = Article(url)
+        a.download()
+        a.parse()
+        text = a.text
+        sentences = [s.strip() for s in text.split(".") if len(s.strip()) > 15]
         claims = [s for s in sentences if any(k in s.lower() for k in ["will","plan","promise","said","report"])]
         return text, claims
     except:
@@ -99,11 +95,11 @@ def bias_rating(article_text):
         return "High"
 
 # -----------------------------
-# SAVE TO DB (BULLETPROOF)
+# SAVE TO DB
 # -----------------------------
 def save_claims(claims):
     if not claims:
-        return  # Nothing to save
+        return
 
     conn = sqlite3.connect(DB)
     c = conn.cursor()
@@ -111,9 +107,9 @@ def save_claims(claims):
     for claim in claims:
         required_keys = ["person", "claim", "source", "url", "truth_score", "bias_rating"]
         if not isinstance(claim, dict) or not all(k in claim for k in required_keys):
-            continue  # skip malformed claim
+            continue
         if not claim["claim"].strip():
-            continue  # skip empty claim
+            continue
 
         try:
             c.execute('INSERT OR IGNORE INTO claims VALUES (?,?,?,?,?,?,?,?)', (
